@@ -7,7 +7,7 @@ Key Features:
 - Task Management: Users can create tasks with titles and descriptions, allowing for detailed tracking of responsibilities.
 - Customizable Appearance: The application offers settings to customize background colors, button colors, and secondary colors, enabling users to personalize their experience.
 - Persistent Storage: Tasks are saved to a local file, ensuring that users' lists are preserved even after closing the application.
-- User -Friendly Interface: The layout is designed for ease of use, with clearly labeled buttons and input fields for quick task entry.
+- User-Friendly Interface: The layout is designed for ease of use, with clearly labeled buttons and input fields for quick task entry.
 - Settings Management: Users can easily access a settings window to adjust the application's appearance or restore default settings.
 - Visual Feedback: The application provides visual cues and warnings to guide users, such as alerts for invalid task entries or reminders to select a task before deletion.
 
