@@ -29,88 +29,48 @@ python3 main.py
 ```
 4) Enjoy!
 
-# Краткая инструкция: прозрачный Squid proxy с ICAP DLP
+apt install rsync
 
-## Настройка Squid на RedOS
+sudo nano /usr/local/bin/backup_share.sh
 
-**Установка:**
-```bash
-dnf install squid
-sed -i 's/^SELINUX=.*/SELINUX=disabled/g' /etc/selinux/config
-reboot
-```
+#!/bin/bash
 
-**Сертификаты:**
-```bash
-mkdir -p /etc/squid/ssl_cert /var/lib/squid/ssl_db
-chown -R squid:squid /etc/squid/ssl_cert /var/lib/squid
+# Configuration
+SOURCE_DIR="/mnt/share"
+BACKUP_DIR="/mnt/share_backup"
+LOG_FILE="/var/log/share_backup.log"
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
-openssl req -new -newkey rsa:2048 -days 3650 -nodes -x509 \
-  -keyout /etc/squid/ssl_cert/iwproxy.key \
-  -out /etc/squid/ssl_cert/iwproxy.crt \
-  -subj "/C=RU/ST=Moscow/L=Moscow/O=IWProxy/CN=iwproxy.demo.lab" \
-  -addext "subjectAltName = DNS:iwproxy.demo.lab, DNS:iwproxy"
+# Create backup directory if it doesn't exist
+mkdir -p "$BACKUP_DIR"
 
-openssl dhparam -out /etc/squid/ssl_cert/iwproxy_dhparam.pem 2048
-chown squid:squid /etc/squid/ssl_cert/iwproxy*
-chmod 400 /etc/squid/ssl_cert/iwproxy*
+# Log function
+log() {
+    echo "[$TIMESTAMP] $1" >> "$LOG_FILE"
+}
 
-systemctl stop squid
-rm -rf /var/lib/squid/ssl_db
-/usr/lib64/squid/security_file_certgen -c -s /var/lib/squid/ssl_db -M 20MB
-```
+# Start backup
+log "Starting backup from $SOURCE_DIR to $BACKUP_DIR"
 
-**Конфиг `/etc/squid/squid.conf`:**
-```
-visible_hostname iwproxy.demo.lab
-http_port 3130
-acl intermediate_fetching transaction_initiator certificate-fetching
-http_access allow intermediate_fetching
+# Perform rsync backup
+rsync -av --delete \
+      --exclude='*.tmp' \
+      --exclude='.Trash*' \
+      "$SOURCE_DIR/" "$BACKUP_DIR/" >> "$LOG_FILE" 2>&1
 
-http_port 3128 transparent ssl-bump \
-  tls-cert=/etc/squid/ssl_cert/iwproxy.crt \
-  tls-key=/etc/squid/ssl_cert/iwproxy.key \
-  tls-dh=/etc/squid/ssl_cert/iwproxy_dhparam.pem
+# Check if rsync was successful
+if [ $? -eq 0 ]; then
+    log "Backup completed successfully"
+else
+    log "BACKUP FAILED! Check for errors above"
+    # You can add email notification here if needed
+fi
 
-https_port 3129 intercept ssl-bump \
-  tls-cert=/etc/squid/ssl_cert/iwproxy.crt \
-  tls-key=/etc/squid/ssl_cert/iwproxy.key \
-  tls-dh=/etc/squid/ssl_cert/iwproxy_dhparam.pem
+log "Backup process finished"
 
-sslproxy_cert_error allow all
-ssl_bump stare all
+sudo chmod +x /usr/local/bin/backup_share.sh
 
-sslcrtd_program /usr/lib64/squid/security_file_certgen -s /var/lib/squid/ssl_db -M 20MB
+sudo crontab -e
 
-icap_enable on
-icap_send_client_ip on
-icap_service service_req reqmod_precache bypass=1 icap://192.168.88.101:1344/request
-adaptation_access service_req allow all
+*/30 * * * * /usr/local/bin/backup_share.sh
 
-http_access allow all
-cache_dir ufs /var/spool/squid 100 16 256
-```
-
-**Запуск:**
-```bash
-systemctl enable squid
-systemctl start squid
-```
-
-## Перенаправление трафика
-```bash
-echo 1 > /proc/sys/net/ipv4/ip_forward
-iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3128
-iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 3129
-iptables -t nat -I PREROUTING -d 192.168.88.0/24 -j RETURN
-iptables -t nat -I PREROUTING -p udp --dport 53 -j RETURN
-iptables -t nat -I PREROUTING -p tcp --dport 53 -j RETURN
-```
-
-## На клиентах
-Импортировать `/etc/squid/ssl_cert/iwproxy.der` в доверенные корневые сертификаты.
-
-**Порты:**
-- ICAP: 1344 (DLP)
-- HTTP: 3128 (Squid)
-- HTTPS: 3129 (Squid)
